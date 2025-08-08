@@ -12,6 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+try:
+    profile
+except NameError:
+    # Define a dummy @profile decorator
+    def profile(func):
+        return func
+
+
 from collections.abc import Iterable
 from copy import deepcopy
 from functools import lru_cache, partial
@@ -93,6 +101,7 @@ def validate_fast_preprocess_arguments(
     Checks validity of typically used arguments in an `ImageProcessorFast` `preprocess` method.
     Raises `ValueError` if arguments incompatibility is caught.
     """
+
     validate_preprocess_arguments(
         do_rescale=do_rescale,
         rescale_factor=rescale_factor,
@@ -257,6 +266,9 @@ class BaseImageProcessorFast(BaseImageProcessor):
         Returns:
             `torch.Tensor`: The resized image.
         """
+
+        print('==== fast resize')
+        
         interpolation = interpolation if interpolation is not None else F.InterpolationMode.BILINEAR
         if size.shortest_edge and size.longest_edge:
             # Resize the image so that the shortest edge or the longest edge is of the given size
@@ -382,6 +394,9 @@ class BaseImageProcessorFast(BaseImageProcessor):
         """
         Rescale and normalize images.
         """
+
+        print('==== fast rescale_and_normalize')
+
         image_mean, image_std, do_rescale = self._fuse_mean_std_and_rescale_factor(
             do_normalize=do_normalize,
             image_mean=image_mean,
@@ -417,6 +432,7 @@ class BaseImageProcessorFast(BaseImageProcessor):
         Returns:
             `torch.Tensor`: The center cropped image.
         """
+        print('===== fast center_crop')
         if size.height is None or size.width is None:
             raise ValueError(f"The size dictionary must have keys 'height' and 'width'. Got {size.keys()}")
         return F.center_crop(image, (size["height"], size["width"]))
@@ -435,6 +451,7 @@ class BaseImageProcessorFast(BaseImageProcessor):
         Returns:
             ImageInput: The converted image.
         """
+        print('fast convert_to_rgb')
         return convert_to_rgb(image)
 
     def filter_out_unused_kwargs(self, kwargs: dict):
@@ -624,6 +641,9 @@ class BaseImageProcessorFast(BaseImageProcessor):
 
     @auto_docstring
     def preprocess(self, images: ImageInput, *args, **kwargs: Unpack[DefaultFastImageProcessorKwargs]) -> BatchFeature:
+
+        print('fast preprocess')
+
         # args are not validated, but their order in the `preprocess` and `_preprocess` signatures must be the same
         validate_kwargs(captured_kwargs=kwargs.keys(), valid_processor_keys=self._valid_kwargs_names)
         # Set default kwargs from self. This ensures that if a kwarg is not provided
@@ -660,7 +680,7 @@ class BaseImageProcessorFast(BaseImageProcessor):
             images, *args, do_convert_rgb=do_convert_rgb, input_data_format=input_data_format, device=device, **kwargs
         )
 
-    # @profile
+    @profile
     def _preprocess_image_like_inputs(
         self,
         images: ImageInput,
@@ -675,6 +695,9 @@ class BaseImageProcessorFast(BaseImageProcessor):
         To be overriden by subclasses when image-like inputs other than images should be processed.
         It can be used for segmentation maps, depth maps, etc.
         """
+
+        print(' fast _preprocess_image_like_inputs')
+
         # Prepare input images
         images = self._prepare_image_like_inputs(
             images=images, do_convert_rgb=do_convert_rgb, input_data_format=input_data_format, device=device

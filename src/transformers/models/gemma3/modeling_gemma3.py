@@ -19,6 +19,37 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import time
+import profiling_custom
+
+try:
+    profile
+except NameError:
+    # Define a dummy @profile decorator
+    def profile(func):
+        return func
+
+@profile
+def custom_profile_func(self, pixel_values, inputs_embeds, input_ids):
+    # Merge text and images
+    if pixel_values is not None:
+        image_features = self.get_image_features(pixel_values)
+        image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
+        special_image_mask = self.get_placeholder_mask(
+            input_ids, inputs_embeds=inputs_embeds, image_features=image_features
+        )
+        inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
+    
+    return image_features, special_image_mask, inputs_embeds
+
+try:
+    profile
+except NameError:
+    # Define a dummy @profile decorator
+    def profile(func):
+        return func
+
 import copy
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -788,7 +819,7 @@ class Gemma3Model(Gemma3PreTrainedModel):
     def get_decoder(self):
         return self.language_model
 
-    #@profile # tag - mstojko
+    @profile # tag - mstojko
     def get_image_features(self, pixel_values: torch.Tensor) -> torch.Tensor:
         """
         Projects the last hidden state from the vision model into language model space.
@@ -799,8 +830,19 @@ class Gemma3Model(Gemma3PreTrainedModel):
         Returns:
             image_features (`torch.Tensor`): Image feature tensor of shape `(num_images, image_length, embed_dim)`).
         """
+
+        # tag - mstojko
+
+        print('EVO GA')
+        # global image_encoder_t0, vision_tower_time, multi_modal_projector_time
+
+        profiling_custom.image_encoder_t0 = time.perf_counter()
         vision_outputs = self.vision_tower(pixel_values=pixel_values).last_hidden_state
+        profiling_custom.vision_tower_time = time.perf_counter() - profiling_custom.image_encoder_t0
+
         image_features = self.multi_modal_projector(vision_outputs)
+        profiling_custom.multi_modal_projector_time = time.perf_counter() - profiling_custom.image_encoder_t0 - profiling_custom.vision_tower_time
+
         return image_features
 
     def get_placeholder_mask(
@@ -829,7 +871,7 @@ class Gemma3Model(Gemma3PreTrainedModel):
 
     @can_return_tuple
     @auto_docstring
-    #@profile tag
+    @profile # tag
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -900,14 +942,7 @@ class Gemma3Model(Gemma3PreTrainedModel):
                 past_seen_tokens, past_seen_tokens + inputs_embeds.shape[1], device=inputs_embeds.device
             )
 
-        # Merge text and images
-        if pixel_values is not None:
-            image_features = self.get_image_features(pixel_values)
-            image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
-            special_image_mask = self.get_placeholder_mask(
-                input_ids, inputs_embeds=inputs_embeds, image_features=image_features
-            )
-            inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
+        image_features, special_image_mask, inputs_embeds = custom_profile_func(self, pixel_values, inputs_embeds, input_ids)
 
         # It may already have been prepared by e.g. `generate`
         if not isinstance(causal_mask_mapping := attention_mask, dict):
@@ -944,7 +979,7 @@ class Gemma3Model(Gemma3PreTrainedModel):
         # print("Thread Name:", threading.current_thread().name)
 
 
-        start = time.perf_counter()
+        profiling_custom.llm_start = time.perf_counter()
         outputs = self.language_model(
             attention_mask=causal_mask_mapping,
             position_ids=position_ids,
@@ -957,8 +992,6 @@ class Gemma3Model(Gemma3PreTrainedModel):
             cache_position=cache_position,
             **lm_kwargs,
         )
-        profiling_custom.llm_total_time += time.perf_counter() - start
-        profiling_custom.llm_call_count += 1
 
         return Gemma3ModelOutputWithPast(
             last_hidden_state=outputs.last_hidden_state,
@@ -1134,6 +1167,8 @@ class Gemma3ForConditionalGeneration(Gemma3PreTrainedModel, GenerationMixin):
         if not return_dict:
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output
+
+        profiling_custom.llm_end = time.perf_counter()
 
         return Gemma3CausalLMOutputWithPast(
             loss=loss,

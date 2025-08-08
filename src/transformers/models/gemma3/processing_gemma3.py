@@ -13,6 +13,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import time
+import profiling_custom
+
 import re
 from typing import Optional, Union
 
@@ -102,7 +106,11 @@ class Gemma3Processor(ProcessorMixin):
         image_inputs = {}
         if images is not None:
             batched_images = make_nested_list_of_images(images)
+            
+
+            profiling_custom.pre_image_processing_time = time.perf_counter()
             image_inputs = self.image_processor(batched_images, **output_kwargs["images_kwargs"])
+            profiling_custom.post_image_processing_time = time.perf_counter()
 
             # Create empty text to be replaced with placeholders
             if not text:

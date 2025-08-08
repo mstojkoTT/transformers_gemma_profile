@@ -12,6 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+try:
+    profile
+except NameError:
+    # Define a dummy @profile decorator
+    def profile(func):
+        return func
+
 import math
 from collections.abc import Iterable
 from typing import Optional, Union
@@ -39,7 +46,7 @@ class BaseImageProcessor(ImageProcessingMixin):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    # @profile tag 
+    @profile
     def __call__(self, images, **kwargs) -> BatchFeature:
         """Preprocess an image or a batch of images."""
         return self.preprocess(images, **kwargs)
@@ -77,6 +84,7 @@ class BaseImageProcessor(ImageProcessingMixin):
         Returns:
             `np.ndarray`: The rescaled image.
         """
+        assert False # mstojko
         return rescale(image, scale=scale, data_format=data_format, input_data_format=input_data_format, **kwargs)
 
     def normalize(
@@ -112,6 +120,7 @@ class BaseImageProcessor(ImageProcessingMixin):
         Returns:
             `np.ndarray`: The normalized image.
         """
+        assert False # mstojko
         return normalize(
             image, mean=mean, std=std, data_format=data_format, input_data_format=input_data_format, **kwargs
         )
@@ -144,6 +153,7 @@ class BaseImageProcessor(ImageProcessingMixin):
                 - `"channels_first"` or `ChannelDimension.FIRST`: image in (num_channels, height, width) format.
                 - `"channels_last"` or `ChannelDimension.LAST`: image in (height, width, num_channels) format.
         """
+        assert False # mstojko
         size = get_size_dict(size)
         if "height" not in size or "width" not in size:
             raise ValueError(f"The size dictionary must have keys 'height' and 'width'. Got {size.keys()}")
@@ -295,6 +305,7 @@ def get_patch_output_size(image, target_resolution, input_data_format):
     """
     Given an image and a target resolution, calculate the output size of the image after cropping to the target
     """
+    assert False # mstojko
     original_height, original_width = get_image_size(image, channel_dim=input_data_format)
     target_height, target_width = target_resolution
 

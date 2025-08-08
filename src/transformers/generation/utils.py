@@ -13,6 +13,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+import profiling_custom
+import time
+
 import copy
 import inspect
 import os
@@ -27,6 +31,7 @@ from huggingface_hub import file_exists
 from packaging import version
 from torch import nn
 from torch.nn import functional as F
+
 
 from ..cache_utils import (
     Cache,
@@ -3594,7 +3599,9 @@ class GenerationMixin(ContinuousMixin):
             model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
 
             if is_prefill:
+                profiling_custom.pre_prefill_time = time.perf_counter()
                 outputs = self(**model_inputs, return_dict=True)
+                profiling_custom.post_prefill_time = time.perf_counter()
                 is_prefill = False
             else:
                 outputs = model_forward(**model_inputs, return_dict=True)
