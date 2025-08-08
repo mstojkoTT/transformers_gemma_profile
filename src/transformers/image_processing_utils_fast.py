@@ -660,6 +660,7 @@ class BaseImageProcessorFast(BaseImageProcessor):
             images, *args, do_convert_rgb=do_convert_rgb, input_data_format=input_data_format, device=device, **kwargs
         )
 
+    # @profile
     def _preprocess_image_like_inputs(
         self,
         images: ImageInput,

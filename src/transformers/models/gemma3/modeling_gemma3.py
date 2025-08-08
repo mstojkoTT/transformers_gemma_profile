@@ -24,6 +24,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Optional, Union
 
+
+import profiling_custom
+
+# import threading
 import torch
 import torch.nn as nn
 
@@ -39,14 +43,13 @@ from ...modeling_rope_utils import ROPE_INIT_FUNCTIONS, dynamic_rope_update
 from ...modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
 from ...processing_utils import Unpack
 from ...utils import ModelOutput, TransformersKwargs, auto_docstring, can_return_tuple, logging
-from ...utils.deprecation import deprecate_kwarg
 from ...utils.generic import check_model_inputs
 from ..auto import AutoModel
 from .configuration_gemma3 import Gemma3Config, Gemma3TextConfig
+import time
 
 
 logger = logging.get_logger(__name__)
-
 
 @dataclass
 @auto_docstring(
@@ -151,8 +154,6 @@ class Gemma3RMSNorm(nn.Module):
 
 
 class Gemma3RotaryEmbedding(nn.Module):
-    inv_freq: torch.Tensor  # fix linting for `register_buffer`
-
     def __init__(self, config: Gemma3TextConfig, device=None):
         super().__init__()
         # BC: "rope_type" was originally "type"
@@ -299,13 +300,12 @@ class Gemma3Attention(nn.Module):
         self.q_norm = Gemma3RMSNorm(dim=config.head_dim, eps=config.rms_norm_eps)
         self.k_norm = Gemma3RMSNorm(dim=config.head_dim, eps=config.rms_norm_eps)
 
-    @deprecate_kwarg("past_key_value", new_name="past_key_values", version="4.58")
     def forward(
         self,
         hidden_states: torch.Tensor,
         position_embeddings: torch.Tensor,
         attention_mask: Optional[torch.Tensor],
-        past_key_values: Optional[Cache] = None,
+        past_key_value: Optional[Cache] = None,
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs: Unpack[FlashAttentionKwargs],
     ) -> tuple[torch.Tensor, Optional[torch.Tensor], Optional[tuple[torch.Tensor]]]:
@@ -322,10 +322,10 @@ class Gemma3Attention(nn.Module):
         cos, sin = position_embeddings
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin)
 
-        if past_key_values is not None:
+        if past_key_value is not None:
             # sin and cos are specific to RoPE models; cache_position needed for the static cache
             cache_kwargs = {"sin": sin, "cos": cos, "cache_position": cache_position}
-            key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx, cache_kwargs)
+            key_states, value_states = past_key_value.update(key_states, value_states, self.layer_idx, cache_kwargs)
 
         attention_interface: Callable = eager_attention_forward
         if self.config._attn_implementation != "eager":
@@ -362,7 +362,6 @@ class Gemma3DecoderLayer(GradientCheckpointingLayer):
         self.pre_feedforward_layernorm = Gemma3RMSNorm(self.hidden_size, eps=config.rms_norm_eps)
         self.post_feedforward_layernorm = Gemma3RMSNorm(self.hidden_size, eps=config.rms_norm_eps)
 
-    @deprecate_kwarg("past_key_value", new_name="past_key_values", version="4.58")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -370,7 +369,7 @@ class Gemma3DecoderLayer(GradientCheckpointingLayer):
         position_embeddings_local: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Cache] = None,
+        past_key_value: Optional[Cache] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cache_position: Optional[torch.LongTensor] = None,
@@ -391,7 +390,7 @@ class Gemma3DecoderLayer(GradientCheckpointingLayer):
             position_embeddings=position_embeddings,
             attention_mask=attention_mask,
             position_ids=position_ids,
-            past_key_values=past_key_values,
+            past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
             cache_position=cache_position,
@@ -558,7 +557,7 @@ class Gemma3TextModel(Gemma3PreTrainedModel):
                 position_embeddings_local=position_embeddings_local,
                 attention_mask=causal_mask_mapping[decoder_layer.attention_type],
                 position_ids=position_ids,
-                past_key_values=past_key_values,
+                past_key_value=past_key_values,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
                 cache_position=cache_position,
@@ -789,6 +788,7 @@ class Gemma3Model(Gemma3PreTrainedModel):
     def get_decoder(self):
         return self.language_model
 
+    #@profile # tag - mstojko
     def get_image_features(self, pixel_values: torch.Tensor) -> torch.Tensor:
         """
         Projects the last hidden state from the vision model into language model space.
@@ -829,6 +829,7 @@ class Gemma3Model(Gemma3PreTrainedModel):
 
     @can_return_tuple
     @auto_docstring
+    #@profile tag
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -927,9 +928,7 @@ class Gemma3Model(Gemma3PreTrainedModel):
                 is_image = (token_type_ids == 1).to(cache_position.device)
                 new_image_start = is_image & ~nn.functional.pad(is_image, (1, 0), value=0)[:, :-1]
                 image_group_ids = torch.cumsum(new_image_start.int(), dim=1) - 1
-                image_group_ids = torch.where(
-                    is_image, image_group_ids, torch.full_like(token_type_ids, -1, device=is_image.device)
-                )
+                image_group_ids = torch.where(is_image, image_group_ids, torch.full_like(token_type_ids, -1))
                 mask_kwargs["or_mask_function"] = token_type_ids_mask_function(
                     token_type_ids.to(cache_position.device), image_group_ids, self.config.mm_tokens_per_image
                 )
@@ -939,7 +938,13 @@ class Gemma3Model(Gemma3PreTrainedModel):
                 "full_attention": create_causal_mask(**mask_kwargs),
                 "sliding_attention": create_sliding_window_causal_mask(**mask_kwargs),
             }
+        
 
+        # print("Thread ID:", threading.get_ident())
+        # print("Thread Name:", threading.current_thread().name)
+
+
+        start = time.perf_counter()
         outputs = self.language_model(
             attention_mask=causal_mask_mapping,
             position_ids=position_ids,
@@ -952,6 +957,8 @@ class Gemma3Model(Gemma3PreTrainedModel):
             cache_position=cache_position,
             **lm_kwargs,
         )
+        profiling_custom.llm_total_time += time.perf_counter() - start
+        profiling_custom.llm_call_count += 1
 
         return Gemma3ModelOutputWithPast(
             last_hidden_state=outputs.last_hidden_state,
