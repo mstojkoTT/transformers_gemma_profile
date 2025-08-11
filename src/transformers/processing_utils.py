@@ -15,6 +15,9 @@
 Processing saving/loading class for common processors.
 """
 
+import time
+import profiling_custom
+
 import bisect
 import copy
 import inspect
@@ -1548,8 +1551,10 @@ class ProcessorMixin(PushToHubMixin):
                         if key in vision_info and vision_info["type"] == "video"
                     ]
 
+                    profiling_custom.image_loading_starting = time.perf_counter()
                     for fname in image_fnames:
                         images.append(load_image(fname))
+                    profiling_custom.image_loading_end = time.perf_counter()
 
                     # Audio models do not accept nested list of audios (yet!) so we construct a flat input audio list
                     if not mm_load_kwargs["load_audio_from_video"]:
