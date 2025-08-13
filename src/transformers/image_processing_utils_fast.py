@@ -267,7 +267,7 @@ class BaseImageProcessorFast(BaseImageProcessor):
             `torch.Tensor`: The resized image.
         """
 
-        print('==== fast resize')
+        print('==== enter fast resize')
         
         interpolation = interpolation if interpolation is not None else F.InterpolationMode.BILINEAR
         if size.shortest_edge and size.longest_edge:
@@ -298,8 +298,12 @@ class BaseImageProcessorFast(BaseImageProcessor):
         # Tracked in PyTorch issue: https://github.com/pytorch/pytorch/issues/155209
         # TODO: remove this once the bug is fixed (detected with torch==2.7.0+git1fee196, torchvision==0.22.0+9eb57cd)
         if torch.compiler.is_compiling() and is_rocm_platform():
-            return self.compile_friendly_resize(image, new_size, interpolation, antialias)
-        return F.resize(image, new_size, interpolation=interpolation, antialias=antialias)
+            ret = self.compile_friendly_resize(image, new_size, interpolation, antialias)
+        else:
+            ret = F.resize(image, new_size, interpolation=interpolation, antialias=antialias)
+        
+        print('==== exit fast resize')
+        return ret
 
     @staticmethod
     def compile_friendly_resize(
@@ -395,7 +399,7 @@ class BaseImageProcessorFast(BaseImageProcessor):
         Rescale and normalize images.
         """
 
-        print('==== fast rescale_and_normalize')
+        print('==== enter fast rescale_and_normalize')
 
         image_mean, image_std, do_rescale = self._fuse_mean_std_and_rescale_factor(
             do_normalize=do_normalize,
@@ -411,6 +415,7 @@ class BaseImageProcessorFast(BaseImageProcessor):
         elif do_rescale:
             images = self.rescale(images, rescale_factor)
 
+        print('==== exit fast rescale_and_normalize')
         return images
 
     def center_crop(
@@ -451,8 +456,10 @@ class BaseImageProcessorFast(BaseImageProcessor):
         Returns:
             ImageInput: The converted image.
         """
-        print('fast convert_to_rgb')
-        return convert_to_rgb(image)
+        print('== entry fast convert_to_rgb')
+        ret = convert_to_rgb(image)
+        print('== exit fast convert_to_rgb')
+        return ret
 
     def filter_out_unused_kwargs(self, kwargs: dict):
         """
@@ -642,7 +649,7 @@ class BaseImageProcessorFast(BaseImageProcessor):
     @auto_docstring
     def preprocess(self, images: ImageInput, *args, **kwargs: Unpack[DefaultFastImageProcessorKwargs]) -> BatchFeature:
 
-        print('fast preprocess')
+        print('=== enter fast preprocess')
 
         # args are not validated, but their order in the `preprocess` and `_preprocess` signatures must be the same
         validate_kwargs(captured_kwargs=kwargs.keys(), valid_processor_keys=self._valid_kwargs_names)
@@ -676,9 +683,11 @@ class BaseImageProcessorFast(BaseImageProcessor):
         kwargs.pop("default_to_square")
         kwargs.pop("data_format")
 
-        return self._preprocess_image_like_inputs(
+        ret = self._preprocess_image_like_inputs(
             images, *args, do_convert_rgb=do_convert_rgb, input_data_format=input_data_format, device=device, **kwargs
         )
+        print('===  exit fast preprocess')
+        return ret
 
     @profile
     def _preprocess_image_like_inputs(
@@ -696,13 +705,16 @@ class BaseImageProcessorFast(BaseImageProcessor):
         It can be used for segmentation maps, depth maps, etc.
         """
 
-        print(' fast _preprocess_image_like_inputs')
+        print('==== enter fast _preprocess_image_like_inputs')
 
         # Prepare input images
         images = self._prepare_image_like_inputs(
             images=images, do_convert_rgb=do_convert_rgb, input_data_format=input_data_format, device=device
         )
-        return self._preprocess(images, *args, **kwargs)
+
+        ret = self._preprocess(images, *args, **kwargs)
+        print('==== exit fast _preprocess_image_like_inputs')
+        return ret
 
     def _preprocess(
         self,

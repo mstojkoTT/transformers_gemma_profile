@@ -89,6 +89,9 @@ class Gemma3Processor(ProcessorMixin):
         audio=None,
         **kwargs: Unpack[Gemma3ProcessorKwargs],
     ) -> BatchFeature:
+
+        profiling_custom.preprocessing_with_overhead_start = profiling_custom.get_time()
+
         if text is None and images is None:
             raise ValueError("Provide at least one of `text` or `images`.")
 
@@ -157,7 +160,9 @@ class Gemma3Processor(ProcessorMixin):
             mm_token_type_ids[array_ids == self.image_token_id] = 1
             text_inputs["token_type_ids"] = mm_token_type_ids.tolist()
 
-        return BatchFeature(data={**text_inputs, **image_inputs}, tensor_type=return_tensors)
+        ret = BatchFeature(data={**text_inputs, **image_inputs}, tensor_type=return_tensors)
+        profiling_custom.preprocessing_with_overhead_end = profiling_custom.get_time()
+        return ret
 
     def _get_num_multimodal_tokens(self, image_sizes=None, **kwargs):
         """
