@@ -1551,10 +1551,10 @@ class ProcessorMixin(PushToHubMixin):
                         if key in vision_info and vision_info["type"] == "video"
                     ]
 
-                    profiling_custom.image_loading_starting = time.perf_counter()
+                    profiling_custom.image_loading_starting = profiling_custom.get_time()
                     for fname in image_fnames:
                         images.append(load_image(fname))
-                    profiling_custom.image_loading_end = time.perf_counter()
+                    profiling_custom.image_loading_end = profiling_custom.get_time()
 
                     # Audio models do not accept nested list of audios (yet!) so we construct a flat input audio list
                     if not mm_load_kwargs["load_audio_from_video"]:

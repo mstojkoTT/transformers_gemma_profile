@@ -833,15 +833,14 @@ class Gemma3Model(Gemma3PreTrainedModel):
 
         # tag - mstojko
 
-        print('EVO GA')
         # global image_encoder_t0, vision_tower_time, multi_modal_projector_time
 
-        profiling_custom.image_encoder_t0 = time.perf_counter()
+        profiling_custom.image_encoder_t0 = profiling_custom.get_time()
         vision_outputs = self.vision_tower(pixel_values=pixel_values).last_hidden_state
-        profiling_custom.vision_tower_time = time.perf_counter() - profiling_custom.image_encoder_t0
+        profiling_custom.vision_tower_time = profiling_custom.get_time() - profiling_custom.image_encoder_t0
 
         image_features = self.multi_modal_projector(vision_outputs)
-        profiling_custom.multi_modal_projector_time = time.perf_counter() - profiling_custom.image_encoder_t0 - profiling_custom.vision_tower_time
+        profiling_custom.multi_modal_projector_time = profiling_custom.get_time() - profiling_custom.image_encoder_t0 - profiling_custom.vision_tower_time
 
         return image_features
 
@@ -979,7 +978,7 @@ class Gemma3Model(Gemma3PreTrainedModel):
         # print("Thread Name:", threading.current_thread().name)
 
 
-        profiling_custom.llm_start = time.perf_counter()
+        profiling_custom.llm_start = profiling_custom.get_time()
         outputs = self.language_model(
             attention_mask=causal_mask_mapping,
             position_ids=position_ids,
@@ -1168,7 +1167,7 @@ class Gemma3ForConditionalGeneration(Gemma3PreTrainedModel, GenerationMixin):
             output = (logits,) + outputs[1:]
             return (loss,) + output if loss is not None else output
 
-        profiling_custom.llm_end = time.perf_counter()
+        profiling_custom.llm_end = profiling_custom.get_time()
 
         return Gemma3CausalLMOutputWithPast(
             loss=loss,

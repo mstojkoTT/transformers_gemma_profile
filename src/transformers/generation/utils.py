@@ -3599,9 +3599,9 @@ class GenerationMixin(ContinuousMixin):
             model_inputs.update({"output_hidden_states": output_hidden_states} if output_hidden_states else {})
 
             if is_prefill:
-                profiling_custom.pre_prefill_time = time.perf_counter()
+                profiling_custom.pre_prefill_time = profiling_custom.get_time()
                 outputs = self(**model_inputs, return_dict=True)
-                profiling_custom.post_prefill_time = time.perf_counter()
+                profiling_custom.post_prefill_time = profiling_custom.get_time()
                 is_prefill = False
             else:
                 outputs = model_forward(**model_inputs, return_dict=True)

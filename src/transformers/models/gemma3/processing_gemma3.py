@@ -108,9 +108,9 @@ class Gemma3Processor(ProcessorMixin):
             batched_images = make_nested_list_of_images(images)
             
 
-            profiling_custom.pre_image_processing_time = time.perf_counter()
+            profiling_custom.pre_image_processing_time = profiling_custom.get_time()
             image_inputs = self.image_processor(batched_images, **output_kwargs["images_kwargs"])
-            profiling_custom.post_image_processing_time = time.perf_counter()
+            profiling_custom.post_image_processing_time = profiling_custom.get_time()
 
             # Create empty text to be replaced with placeholders
             if not text:
